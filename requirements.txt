@@ -1,6 +1,7 @@
 streamlit
 youtube_dl
-moviepy
 opencv-python-headless
 pytube
 whisper
+moviepy==1.0.3
+imageio-ffmpeg
