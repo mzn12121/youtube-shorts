@@ -1,7 +1,7 @@
 
 import streamlit as st
 import yt_dlp as youtube_dl
-import openai_whisper as whisper
+import whisper
 from pytube import YouTube
 import cv2
 import os
