@@ -3,3 +3,4 @@ youtube_dl
 moviepy
 opencv-python-headless
 pytube
+openai-whisper
