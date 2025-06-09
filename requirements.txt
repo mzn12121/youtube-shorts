@@ -1,7 +1,5 @@
 streamlit
-pytube
-openai-whisper
+youtube_dl
 moviepy
-opencv-python
-numpy
-pillow
+opencv-python-headless
+pytube
