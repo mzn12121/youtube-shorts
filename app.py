@@ -1,84 +1,80 @@
 import streamlit as st
-import yt_dlp
+import yt_dlp as youtube_dl
 import whisper
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 import os
 
 st.set_page_config(page_title="YouTube Shorts Maker", layout="centered")
-st.title("🎬 محول فيديوهات يوتيوب إلى Shorts مع ترجمة بخط تجوال")
 
-# تحميل الفيديو من رابط اليوتيوب
-url = st.text_input("أدخل رابط فيديو يوتيوب:")
+st.title("🎬 صانع YouTube Shorts (بدون دمج تنسيقات)")
 
-if st.button("ابدأ التحويل") and url:
-    try:
-        st.info("جارٍ تحميل الفيديو...")
+video_url = st.text_input("أدخل رابط فيديو يوتيوب")
 
-        ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
-            'outtmpl': 'downloaded_video.%(ext)s',
-            'merge_output_format': 'mp4',
-            'quiet': True,
-            'no_warnings': True,
-        }
+if st.button("إنشاء شورت") and video_url:
+    with st.spinner("جارٍ تحميل الفيديو..."):
+        try:
+            ydl_opts = {
+                'format': 'best',  # تحميل أفضل صيغة فيديو واحدة فقط بدون دمج
+                'outtmpl': 'downloaded_video.%(ext)s',
+                'quiet': True,
+                'no_warnings': True,
+            }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
 
-        st.success("✅ تم تحميل الفيديو!")
+            st.success("✅ تم تحميل الفيديو!")
 
-        # تحميل نموذج Whisper
-        st.info("🧠 جارٍ استخراج الترجمة...")
-        model = whisper.load_model("small")  # يمكنك اختيار base, small, medium, large
+            # استخدم whisper لاستخراج الترجمة
+            st.info("🧠 جارٍ استخراج الترجمة...")
+            model = whisper.load_model("base")
+            result = model.transcribe("downloaded_video.mp4", language="ar")
 
-        result = model.transcribe("downloaded_video.mp4", language="ar")  # اللغة عربية
+            subtitles = result["text"]
 
-        st.success("✅ تم استخراج الترجمة!")
+            # عرض الترجمة
+            st.text_area("الترجمة المستخرجة:", subtitles, height=150)
 
-        # تجهيز الترجمة النصية (الخط هنا تجوال Black)
-        subtitles = result["segments"]
-        full_text = result["text"]
+            # تحرير الفيديو لتنسيق 9:16 (شورت)
+            st.info("🎥 جارٍ تعديل الفيديو للقياس الطولي (9:16)...")
 
-        # معالجة الفيديو: قصه ليصبح 9:16 (طولي)
-        video = VideoFileClip("downloaded_video.mp4")
+            videoclip = VideoFileClip("downloaded_video.mp4")
+            # تحديد الطول والعرض للقص
+            width, height = videoclip.size
+            new_width = 720
+            new_height = 1280
 
-        # تحديد أبعاد الفيديو الجديد (على سبيل المثال 1080x1920)
-        target_width = 1080
-        target_height = 1920
+            # قص الفيديو مركزيًا ليناسب القياس الطولي
+            if width / height > new_width / new_height:
+                # الفيديو أعرض من اللازم، قص من العرض
+                new_clip = videoclip.crop(
+                    x_center=width/2, width=height * new_width / new_height, y_center=height/2, height=height
+                )
+            else:
+                # الفيديو أطول من اللازم، قص من الارتفاع
+                new_clip = videoclip.crop(
+                    x_center=width/2, width=width, y_center=height/2, height=width * new_height / new_width
+                )
 
-        # قص وسط الفيديو أفقيًا ليناسب الطول
-        w, h = video.size
-        new_x = max(0, (w - target_width) // 2)
-        video_cropped = video.crop(x1=new_x, y1=0, width=target_width, height=h)
-        video_resized = video_cropped.resize(height=target_height)
+            # إعادة ضبط حجم الفيديو للقياس النهائي
+            final_clip = new_clip.resize((new_width, new_height))
 
-        # إضافة الترجمة كـ TextClip
-        clips = [video_resized]
+            # إضافة الترجمة على الفيديو (نص في أسفل الشاشة)
+            txt_clip = TextClip(subtitles, fontsize=40, color='white', font='Arial-Bold', method='caption', size=(new_width-40, None))
+            txt_clip = txt_clip.set_position(('center', new_height - 150)).set_duration(final_clip.duration).margin(bottom=20, opacity=0)
 
-        for segment in subtitles:
-            txt = segment["text"].strip()
-            start = segment["start"]
-            end = segment["end"]
+            video_final = CompositeVideoClip([final_clip, txt_clip])
+            output_path = "short_video.mp4"
+            video_final.write_videofile(output_path, codec="libx264", audio_codec="aac")
 
-            txt_clip = (
-                TextClip(txt, fontsize=48, font="Tajawal-Black", color="white", stroke_color="black", stroke_width=2, method="caption", size=(target_width * 0.9, None))
-                .set_start(start)
-                .set_duration(end - start)
-                .set_position(("center", "bottom"))
-            )
-            clips.append(txt_clip)
+            st.success("✅ تم إنشاء الفيديو القصير!")
 
-        final_video = CompositeVideoClip(clips)
-        output_filename = "output_shorts.mp4"
-        final_video.write_videofile(output_filename, fps=video.fps, codec="libx264")
+            # عرض الفيديو النهائي
+            st.video(output_path)
 
-        st.success(f"تم إنشاء الفيديو القصير بنجاح: {output_filename}")
-        st.video(output_filename)
+            # حذف الملفات المؤقتة
+            os.remove("downloaded_video.mp4")
+            os.remove(output_path)
 
-        # حذف الملفات المؤقتة
-        video.close()
-        final_video.close()
-        os.remove("downloaded_video.mp4")
-
-    except Exception as e:
-        st.error(f"❌ حدث خطأ: {e}")
+        except Exception as e:
+            st.error(f"❌ حدث خطأ: {e}")
